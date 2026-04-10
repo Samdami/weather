@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aether Weather</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <script src="/_sdk/element_sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+  <script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['DM Sans', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace']
+      }
+    }
+  }
+}
+</script>
+  <style>
+  html, body { height: 100%; margin: 0; }
+  body { font-family: 'DM Sans', system-ui, sans-serif; }
+  .fade-in { animation: fadeIn 0.4s ease-out; }
+  .slide-up { animation: slideUp 0.5s ease-out; }
+  .slide-up-delay { animation: slideUp 0.5s ease-out 0.1s both; }
+  .slide-up-delay2 { animation: slideUp 0.5s ease-out 0.2s both; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+  .glass-light { background: rgba(255,255,255,0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+  .glass-dark { background: rgba(30,30,40,0.72); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+  .chart-container { position: relative; width: 100%; height: 200px; }
+  ::-webkit-scrollbar { height: 4px; width: 4px; }
+  ::-webkit-scrollbar-thumb { background: rgba(120,120,140,0.3); border-radius: 4px; }
+  .alert-pulse { animation: alertPulse 3s ease-in-out infinite; }
+  @keyframes alertPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.85; } }
+  .search-input::placeholder { color: rgba(120,120,140,0.6); }
+  .dark .search-input::placeholder { color: rgba(160,160,180,0.5); }
+  .temp-display { font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
+</style>
+  <style>body { box-sizing: border-box; }</style>
+  <script src="/_sdk/data_sdk.js" type="text/javascript"></script>
+ </head>
+ <body class="h-full bg-stone-50 dark:bg-[#0f0f14] text-stone-900 dark:text-stone-100 transition-colors duration-300">
+  <div id="app" class="h-full w-full overflow-auto">
+   <!-- Alert Banner -->
+   <div id="alert-banner" class="hidden alert-pulse bg-amber-500/10 dark:bg-amber-500/15 border-b border-amber-500/20 px-4 py-2.5">
+    <div class="max-w-6xl mx-auto flex items-center gap-2.5 text-amber-700 dark:text-amber-400 text-sm font-medium">
+     <i data-lucide="alert-triangle" style="width:16px;height:16px;flex-shrink:0"></i> <span id="alert-text">Heavy rainfall expected in the next 3 hours — consider indoor plans.</span> <button onclick="document.getElementById('alert-banner').classList.add('hidden')" class="ml-auto p-0.5 hover:bg-amber-500/10 rounded"> <i data-lucide="x" style="width:14px;height:14px"></i> </button>
+    </div>
+   </div><!-- Nav -->
+   <nav class="sticky top-0 z-30 glass-light dark:glass-dark border-b border-stone-200/60 dark:border-white/5">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-3 sm:gap-4">
+     <div class="flex items-center gap-2 flex-shrink-0">
+      <div class="w-7 h-7 rounded-lg bg-sky-500 flex items-center justify-center">
+       <i data-lucide="cloud-sun" style="width:16px;height:16px;color:white"></i>
+      </div><span id="app-logo-text" class="font-semibold text-base tracking-tight hidden sm:inline">Aether</span>
+     </div>
+     <div class="flex-1 max-w-md relative">
+      <i data-lucide="search" style="width:15px;height:15px" class="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500 pointer-events-none"></i> <input id="search-input" type="text" placeholder="Search city…" class="search-input w-full pl-9 pr-4 py-2 rounded-xl bg-stone-100 dark:bg-white/5 border border-stone-200/60 dark:border-white/8 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-400 transition-all" autocomplete="off">
+      <div id="search-dropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#1a1a24] rounded-xl border border-stone-200 dark:border-white/10 shadow-lg overflow-hidden z-50"></div>
+     </div>
+     <div class="flex items-center gap-2 flex-shrink-0">
+      <button id="unit-toggle" onclick="toggleUnit()" class="text-xs font-mono font-medium px-3 py-1.5 rounded-lg bg-stone-100 dark:bg-white/5 border border-stone-200/60 dark:border-white/8 hover:bg-stone-200 dark:hover:bg-white/10 transition-colors">°C</button> <button onclick="toggleTheme()" class="p-2 rounded-lg hover:bg-stone-100 dark:hover:bg-white/5 transition-colors"> <i data-lucide="moon" style="width:16px;height:16px" class="dark:hidden"></i> <i data-lucide="sun" style="width:16px;height:16px" class="hidden dark:block"></i> </button>
+     </div>
+    </div>
+   </nav><!-- Main Content -->
+   <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <!-- Hero -->
+    <section id="hero" class="fade-in flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+     <div>
+      <p id="hero-location" class="text-sm font-medium text-stone-500 dark:text-stone-400 mb-1">San Francisco, CA</p>
+      <div class="flex items-baseline gap-2">
+       <span id="hero-temp" class="temp-display text-7xl sm:text-8xl font-light tracking-tighter">18°</span>
+      </div>
+      <div class="flex items-center gap-3 mt-2">
+       <span id="hero-condition" class="text-stone-600 dark:text-stone-300 text-sm font-medium">Partly Cloudy</span> <span class="text-stone-300 dark:text-stone-600">|</span> <span id="hero-hilo" class="text-stone-500 dark:text-stone-400 text-sm font-mono">H:22° L:13°</span>
+      </div>
+      <p id="hero-datetime" class="text-xs text-stone-400 dark:text-stone-500 mt-1.5 font-mono"></p>
+     </div>
+     <div id="hero-icon" class="text-6xl sm:text-7xl leading-none self-start sm:self-end">
+      ⛅
+     </div>
+    </section><!-- Live Data Cards -->
+    <section class="slide-up grid grid-cols-2 lg:grid-cols-4 gap-3">
+     <div class="rounded-2xl p-4 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+      <div class="flex items-center gap-2 text-stone-400 dark:text-stone-500 mb-3">
+       <i data-lucide="droplets" style="width:14px;height:14px"></i> <span class="text-xs font-medium uppercase tracking-wider">Humidity</span>
+      </div>
+      <p id="card-humidity" class="text-2xl font-semibold font-mono">72%</p>
+      <p class="text-xs text-stone-400 dark:text-stone-500 mt-1">Dew point: 13°</p>
+     </div>
+     <div class="rounded-2xl p-4 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+      <div class="flex items-center gap-2 text-stone-400 dark:text-stone-500 mb-3">
+       <i data-lucide="wind" style="width:14px;height:14px"></i> <span class="text-xs font-medium uppercase tracking-wider">Wind</span>
+      </div>
+      <p id="card-wind" class="text-2xl font-semibold font-mono">14 <span class="text-sm font-normal">km/h</span></p>
+      <p id="card-wind-dir" class="text-xs text-stone-400 dark:text-stone-500 mt-1">WSW gusts 22 km/h</p>
+     </div>
+     <div class="rounded-2xl p-4 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+      <div class="flex items-center gap-2 text-stone-400 dark:text-stone-500 mb-3">
+       <i data-lucide="cloud-rain" style="width:14px;height:14px"></i> <span class="text-xs font-medium uppercase tracking-wider">Rainfall</span>
+      </div>
+      <p id="card-rain" class="text-2xl font-semibold font-mono">1.2 <span class="text-sm font-normal">mm</span></p>
+      <p class="text-xs text-stone-400 dark:text-stone-500 mt-1">Last hour</p>
+     </div>
+     <div class="rounded-2xl p-4 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+      <div class="flex items-center gap-2 text-stone-400 dark:text-stone-500 mb-3">
+       <i data-lucide="gauge" style="width:14px;height:14px"></i> <span class="text-xs font-medium uppercase tracking-wider">Pressure</span>
+      </div>
+      <p id="card-pressure" class="text-2xl font-semibold font-mono">1013 <span class="text-sm font-normal">hPa</span></p>
+      <p class="text-xs text-stone-400 dark:text-stone-500 mt-1">Steady</p>
+     </div>
+    </section><!-- Charts -->
+    <section class="slide-up-delay grid grid-cols-1 lg:grid-cols-2 gap-3">
+     <div class="rounded-2xl p-5 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+      <h3 class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-4">Hourly Temperature</h3>
+      <div class="chart-container">
+       <canvas id="tempChart"></canvas>
+      </div>
+     </div>
+     <div class="rounded-2xl p-5 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+      <h3 class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-4">Rainfall Trend</h3>
+      <div class="chart-container">
+       <canvas id="rainChart"></canvas>
+      </div>
+     </div>
+    </section><!-- 7-Day Forecast -->
+    <section class="slide-up-delay2 rounded-2xl p-5 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+     <h3 class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-4">7-Day Forecast</h3>
+     <div id="forecast-grid" class="grid grid-cols-7 gap-2 sm:gap-3"></div>
+    </section><!-- METAR & TAF -->
+    <section class="slide-up-delay2 grid grid-cols-1 lg:grid-cols-2 gap-3">
+     <div class="rounded-2xl p-5 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+      <div class="flex items-center gap-2 mb-4"><i data-lucide="radio" style="width:14px;height:14px;color:rgba(120,120,140,0.6)"></i>
+       <h3 class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">METAR (Aerodrome Report)</h3>
+      </div>
+      <div id="metar-content" class="bg-stone-50 dark:bg-black/30 rounded-lg p-4 border border-stone-200/40 dark:border-white/5">
+       <p class="text-xs font-mono text-stone-600 dark:text-stone-300 leading-relaxed break-words whitespace-pre-wrap" id="metar-text">Loading METAR data...</p>
+      </div>
+      <p class="text-xs text-stone-400 dark:text-stone-500 mt-3 font-mono">Updated: <span id="metar-time">--:--</span> UTC</p>
+     </div>
+     <div class="rounded-2xl p-5 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+      <div class="flex items-center gap-2 mb-4"><i data-lucide="flight" style="width:14px;height:14px;color:rgba(120,120,140,0.6)"></i>
+       <h3 class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">TAF (Terminal Forecast)</h3>
+      </div>
+      <div id="taf-content" class="bg-stone-50 dark:bg-black/30 rounded-lg p-4 border border-stone-200/40 dark:border-white/5">
+       <p class="text-xs font-mono text-stone-600 dark:text-stone-300 leading-relaxed break-words whitespace-pre-wrap" id="taf-text">Loading TAF data...</p>
+      </div>
+      <p class="text-xs text-stone-400 dark:text-stone-500 mt-3 font-mono">Valid: <span id="taf-valid">24 hours</span></p>
+     </div>
+    </section><!-- Footer -->
+    <footer class="text-center text-xs text-stone-400 dark:text-stone-500 py-4">
+     <p>Simulated weather data for demonstration — <span id="footer-note">connect your OpenWeatherMap API key for live data</span></p>
+    </footer>
+   </main>
+  </div>
+  <script>
+// Weather data sets for different cities
+const CITIES = {
+  'San Francisco': { temp: 18, hi: 22, lo: 13, humidity: 72, wind: 14, gust: 22, rain: 1.2, pressure: 1013, condition: 'Partly Cloudy', icon: '⛅', windDir: 'WSW', hourlyTemps: [15,14,14,15,16,17,18,19,20,21,22,21,20,19,18,17,16,15,15,14,14,13,13,13], hourlyRain: [0,0,0.2,0.5,1.2,0.8,0.3,0,0,0,0,0,0.1,0.4,0.6,0.3,0,0,0,0,0,0,0,0], alert: true, alertMsg: 'Fog advisory in effect until 10 AM — reduced visibility along the coast.' },
+  'New York': { temp: 24, hi: 28, lo: 19, humidity: 58, wind: 18, gust: 30, rain: 0, pressure: 1018, condition: 'Clear Sky', icon: '☀️', windDir: 'NE', hourlyTemps: [20,19,19,18,19,21,23,25,27,28,28,27,26,25,24,23,22,21,20,20,19,19,18,18], hourlyRain: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], alert: false },
+  'London': { temp: 12, hi: 15, lo: 8, humidity: 85, wind: 22, gust: 35, rain: 3.4, pressure: 1005, condition: 'Heavy Rain', icon: '🌧️', windDir: 'SW', hourlyTemps: [10,9,9,8,8,9,10,11,12,13,14,15,14,13,12,12,11,10,10,9,9,8,8,8], hourlyRain: [0.5,0.8,1.2,2.0,3.4,2.8,1.5,0.8,0.3,0.1,0,0,0.2,0.8,1.5,2.2,1.8,1.0,0.5,0.2,0,0,0,0], alert: true, alertMsg: 'Heavy rainfall expected in the next 3 hours — consider indoor plans.' },
+  'Tokyo': { temp: 28, hi: 32, lo: 24, humidity: 78, wind: 8, gust: 14, rain: 0.5, pressure: 1008, condition: 'Thunderstorms', icon: '⛈️', windDir: 'S', hourlyTemps: [25,24,24,24,25,26,27,28,30,31,32,31,30,29,28,27,27,26,25,25,24,24,24,24], hourlyRain: [0,0,0,0.2,0.5,0.3,0,0,0,0,0.8,2.5,3.2,1.5,0.5,0,0,0,0,0,0,0,0,0], alert: true, alertMsg: 'Thunderstorm warning — lightning activity expected this afternoon.' },
+  'Sydney': { temp: 21, hi: 24, lo: 17, humidity: 65, wind: 20, gust: 28, rain: 0, pressure: 1022, condition: 'Sunny', icon: '☀️', windDir: 'NW', hourlyTemps: [17,17,17,18,19,20,21,22,23,24,24,24,23,22,21,21,20,19,18,18,17,17,17,17], hourlyRain: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], alert: false },
+  'Paris': { temp: 16, hi: 20, lo: 11, humidity: 70, wind: 12, gust: 18, rain: 0.8, pressure: 1015, condition: 'Overcast', icon: '☁️', windDir: 'W', hourlyTemps: [12,11,11,11,12,13,14,15,16,18,19,20,19,18,17,16,15,14,13,12,12,11,11,11], hourlyRain: [0,0,0,0.2,0.4,0.8,0.6,0.3,0.1,0,0,0,0,0,0.2,0.5,0.4,0.2,0,0,0,0,0,0], alert: false },
+  'Dubai': { temp: 39, hi: 43, lo: 31, humidity: 35, wind: 16, gust: 24, rain: 0, pressure: 1006, condition: 'Hot & Hazy', icon: '🌤️', windDir: 'NW', hourlyTemps: [32,31,31,31,32,34,36,38,40,42,43,43,42,41,39,38,37,36,35,34,33,32,32,31], hourlyRain: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], alert: true, alertMsg: 'Extreme heat warning — stay hydrated and avoid prolonged sun exposure.' },
+  'Mumbai': { temp: 33, hi: 35, lo: 28, humidity: 82, wind: 10, gust: 16, rain: 8.5, pressure: 1004, condition: 'Monsoon Rain', icon: '🌧️', windDir: 'SW', hourlyTemps: [29,28,28,28,29,30,31,32,33,34,35,34,33,32,31,30,30,29,29,28,28,28,28,28], hourlyRain: [1.0,0.5,0.2,0,0,0.3,1.5,3.0,5.5,8.5,6.0,3.5,2.0,1.0,2.5,4.0,3.5,2.0,1.0,0.5,0.2,0.1,0,0], alert: true, alertMsg: 'Monsoon rainfall warning — waterlogging possible in low-lying areas.' }
+};
+
+const FORECAST_ICONS = ['☀️','⛅','☁️','🌧️','⛈️','🌤️','🌦️'];
+const FORECAST_CONDITIONS = ['Sunny','Partly Cloudy','Cloudy','Rainy','Storms','Fair','Showers'];
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+let useCelsius = true;
+let currentCity = 'San Francisco';
+let tempChart = null;
+let rainChart = null;
+
+const defaultConfig = {
+  app_title: 'Aether',
+  alert_message: '',
+  background_color: '#fafaf9',
+  surface_color: '#ffffff',
+  text_color: '#1c1917',
+  primary_action_color: '#0ea5e9',
+  secondary_action_color: '#78716c',
+  font_family: 'DM Sans',
+  font_size: 14
+};
+
+function applyConfig(config) {
+  const bg = config.background_color || defaultConfig.background_color;
+  const surface = config.surface_color || defaultConfig.surface_color;
+  const text = config.text_color || defaultConfig.text_color;
+  const primary = config.primary_action_color || defaultConfig.primary_action_color;
+  const secondary = config.secondary_action_color || defaultConfig.secondary_action_color;
+  const font = config.font_family || defaultConfig.font_family;
+  const size = config.font_size || defaultConfig.font_size;
+
+  const isDark = document.documentElement.classList.contains('dark');
+
+  if (!isDark) {
+    document.body.style.backgroundColor = bg;
+    document.body.style.color = text;
+    document.querySelectorAll('.rounded-2xl').forEach(el => {
+      if (el.classList.contains('bg-white')) el.style.backgroundColor = surface;
+    });
+  }
+
+  const title = config.app_title || defaultConfig.app_title;
+  const el = document.getElementById('app-logo-text');
+  if (el) el.textContent = title;
+
+  document.body.style.fontFamily = `${font}, DM Sans, system-ui, sans-serif`;
+
+  const baseSize = size;
+  document.querySelectorAll('#hero-location, .text-sm').forEach(e => e.style.fontSize = `${baseSize}px`);
+  document.getElementById('hero-temp').style.fontSize = `${baseSize * 5}px`;
+}
+
+window.elementSdk.init({
+  defaultConfig,
+  onConfigChange: async (config) => applyConfig(config),
+  mapToCapabilities: (config) => ({
+    recolorables: [
+      { get: () => config.background_color || defaultConfig.background_color, set: v => { config.background_color = v; window.elementSdk.setConfig({ background_color: v }); } },
+      { get: () => config.surface_color || defaultConfig.surface_color, set: v => { config.surface_color = v; window.elementSdk.setConfig({ surface_color: v }); } },
+      { get: () => config.text_color || defaultConfig.text_color, set: v => { config.text_color = v; window.elementSdk.setConfig({ text_color: v }); } },
+      { get: () => config.primary_action_color || defaultConfig.primary_action_color, set: v => { config.primary_action_color = v; window.elementSdk.setConfig({ primary_action_color: v }); } },
+      { get: () => config.secondary_action_color || defaultConfig.secondary_action_color, set: v => { config.secondary_action_color = v; window.elementSdk.setConfig({ secondary_action_color: v }); } }
+    ],
+    borderables: [],
+    fontEditable: { get: () => config.font_family || defaultConfig.font_family, set: v => { config.font_family = v; window.elementSdk.setConfig({ font_family: v }); } },
+    fontSizeable: { get: () => config.font_size || defaultConfig.font_size, set: v => { config.font_size = v; window.elementSdk.setConfig({ font_size: v }); } }
+  }),
+  mapToEditPanelValues: (config) => new Map([
+    ['app_title', config.app_title || defaultConfig.app_title],
+    ['alert_message', config.alert_message || '']
+  ])
+});
+
+function toF(c) { return Math.round(c * 9/5 + 32); }
+function displayTemp(c) { return useCelsius ? Math.round(c) + '°' : toF(c) + '°'; }
+function displayWind(kmh) { return useCelsius ? kmh + ' km/h' : Math.round(kmh * 0.621) + ' mph'; }
+
+function toggleUnit() {
+  useCelsius = !useCelsius;
+  document.getElementById('unit-toggle').textContent = useCelsius ? '°C' : '°F';
+  renderCity(currentCity);
+}
+
+function toggleTheme() {
+  document.documentElement.classList.toggle('dark');
+  renderCharts(CITIES[currentCity]);
+}
+
+function renderCity(name) {
+  currentCity = name;
+  const d = CITIES[name];
+  if (!d) return;
+
+  document.getElementById('hero-location').textContent = name;
+  document.getElementById('hero-temp').textContent = displayTemp(d.temp);
+  document.getElementById('hero-condition').textContent = d.condition;
+  document.getElementById('hero-hilo').textContent = `H:${displayTemp(d.hi)} L:${displayTemp(d.lo)}`;
+  document.getElementById('hero-icon').textContent = d.icon;
+
+  const now = new Date();
+  document.getElementById('hero-datetime').textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + ' · ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  document.getElementById('card-humidity').innerHTML = d.humidity + '<span class="text-sm font-normal">%</span>';
+  document.getElementById('card-wind').innerHTML = displayWind(d.wind);
+  document.getElementById('card-wind-dir').textContent = `${d.windDir} gusts ${displayWind(d.gust)}`;
+  document.getElementById('card-rain').innerHTML = d.rain + ' <span class="text-sm font-normal">mm</span>';
+  document.getElementById('card-pressure').innerHTML = d.pressure + ' <span class="text-sm font-normal">hPa</span>';
+
+  const alertBanner = document.getElementById('alert-banner');
+  const cfg = window.elementSdk.config;
+  const customAlert = cfg.alert_message;
+  if (d.alert || customAlert) {
+    alertBanner.classList.remove('hidden');
+    document.getElementById('alert-text').textContent = customAlert || d.alertMsg;
+  } else {
+    alertBanner.classList.add('hidden');
+  }
+
+  renderForecast(d);
+  renderCharts(d);
+  renderMetarTaf(d);
+}
+
+function renderForecast(d) {
+  const grid = document.getElementById('forecast-grid');
+  grid.innerHTML = '';
+  const today = new Date().getDay();
+  for (let i = 0; i < 7; i++) {
+    const dayIdx = (today + i) % 7;
+    const hi = d.hi + Math.round((Math.random() - 0.5) * 6);
+    const lo = d.lo + Math.round((Math.random() - 0.5) * 4);
+    const iconIdx = i === 0 ? FORECAST_ICONS.indexOf(d.icon) !== -1 ? FORECAST_ICONS.indexOf(d.icon) : 0 : Math.floor(Math.random() * FORECAST_ICONS.length);
+    const col = document.createElement('div');
+    col.className = 'flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-stone-50 dark:hover:bg-white/[0.03] transition-colors';
+    col.innerHTML = `
+      <span class="text-xs font-medium text-stone-500 dark:text-stone-400">${i === 0 ? 'Today' : DAYS[dayIdx]}</span>
+      <span class="text-2xl">${FORECAST_ICONS[iconIdx]}</span>
+      <span class="text-sm font-semibold font-mono">${displayTemp(hi)}</span>
+      <span class="text-xs text-stone-400 dark:text-stone-500 font-mono">${displayTemp(lo)}</span>
+    `;
+    grid.appendChild(col);
+  }
+}
+
+function renderCharts(d) {
+  const isDark = document.documentElement.classList.contains('dark');
+  const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+  const textColor = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)';
+  const hours = Array.from({length:24}, (_,i) => `${i.toString().padStart(2,'0')}:00`);
+  const temps = d.hourlyTemps.map(t => useCelsius ? t : toF(t));
+
+  if (tempChart) tempChart.destroy();
+  if (rainChart) rainChart.destroy();
+
+  const tempCtx = document.getElementById('tempChart').getContext('2d');
+  const grad = tempCtx.createLinearGradient(0,0,0,200);
+  grad.addColorStop(0, isDark ? 'rgba(14,165,233,0.2)' : 'rgba(14,165,233,0.15)');
+  grad.addColorStop(1, 'rgba(14,165,233,0)');
+
+  tempChart = new Chart(tempCtx, {
+    type: 'line',
+    data: { labels: hours, datasets: [{ data: temps, borderColor: '#0ea5e9', backgroundColor: grad, borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: isDark ? '#1a1a24' : '#fff', titleColor: textColor, bodyColor: isDark ? '#e7e5e4' : '#1c1917', borderColor: gridColor, borderWidth: 1, padding: 8, displayColors: false, callbacks: { label: ctx => `${ctx.parsed.y}${useCelsius ? '°C' : '°F'}` } } }, scales: { x: { grid: { display: false }, ticks: { color: textColor, font: { size: 10, family: 'JetBrains Mono' }, maxTicksLimit: 8 } }, y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10, family: 'JetBrains Mono' }, callback: v => v + '°' }, border: { display: false } } } }
+  });
+
+  const rainCtx = document.getElementById('rainChart').getContext('2d');
+  const rainGrad = rainCtx.createLinearGradient(0,0,0,200);
+  rainGrad.addColorStop(0, isDark ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.2)');
+  rainGrad.addColorStop(1, 'rgba(99,102,241,0)');
+
+  rainChart = new Chart(rainCtx, {
+    type: 'bar',
+    data: { labels: hours, datasets: [{ data: d.hourlyRain, backgroundColor: rainGrad, borderColor: 'rgba(99,102,241,0.5)', borderWidth: 1, borderRadius: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: isDark ? '#1a1a24' : '#fff', titleColor: textColor, bodyColor: isDark ? '#e7e5e4' : '#1c1917', borderColor: gridColor, borderWidth: 1, padding: 8, displayColors: false, callbacks: { label: ctx => `${ctx.parsed.y} mm` } } }, scales: { x: { grid: { display: false }, ticks: { color: textColor, font: { size: 10, family: 'JetBrains Mono' }, maxTicksLimit: 8 } }, y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10, family: 'JetBrains Mono' }, callback: v => v + 'mm' }, border: { display: false } } } }
+  });
+}
+
+// Search
+const searchInput = document.getElementById('search-input');
+const searchDropdown = document.getElementById('search-dropdown');
+const cityNames = Object.keys(CITIES);
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim().toLowerCase();
+  if (!q) { searchDropdown.classList.add('hidden'); return; }
+  const matches = cityNames.filter(c => c.toLowerCase().includes(q));
+  if (!matches.length) {
+    searchDropdown.innerHTML = '<div class="px-4 py-3 text-sm text-stone-400">No cities found</div>';
+  } else {
+    searchDropdown.innerHTML = matches.map(c => `<button onclick="selectCity('${c}')" class="w-full text-left px-4 py-2.5 text-sm hover:bg-stone-50 dark:hover:bg-white/5 transition-colors flex items-center gap-2"><i data-lucide="map-pin" style="width:13px;height:13px;opacity:0.4"></i>${c}</button>`).join('');
+  }
+  searchDropdown.classList.remove('hidden');
+  lucide.createIcons();
+});
+
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const q = searchInput.value.trim().toLowerCase();
+    const match = cityNames.find(c => c.toLowerCase().startsWith(q));
+    if (match) selectCity(match);
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#search-input') && !e.target.closest('#search-dropdown')) {
+    searchDropdown.classList.add('hidden');
+  }
+});
+
+function selectCity(name) {
+  searchInput.value = '';
+  searchDropdown.classList.add('hidden');
+  renderCity(name);
+}
+
+function renderMetarTaf(d) {
+  const metarEl = document.getElementById('metar-text');
+  const tafEl = document.getElementById('taf-text');
+  const metarTimeEl = document.getElementById('metar-time');
+  const tafValidEl = document.getElementById('taf-valid');
+
+  metarEl.textContent = d.metar;
+  tafEl.textContent = d.taf;
+
+  const now = new Date();
+  metarTimeEl.textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  tafValidEl.textContent = '24 hours';
+}
+
+// Init
+renderCity('San Francisco');
+lucide.createIcons();
+</script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9ea1718473c50f22',t:'MTc3NTgyMDg3Ny4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>

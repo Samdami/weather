@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>ELH weather</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["DM Sans", "system-ui", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { font-family: "DM Sans", system-ui, sans-serif; box-sizing: border-box; }
+    .fade-in { animation: fadeIn 0.4s ease-out; }
+    .slide-up { animation: slideUp 0.5s ease-out; }
+    .slide-up-delay { animation: slideUp 0.5s ease-out 0.1s both; }
+    .slide-up-delay2 { animation: slideUp 0.5s ease-out 0.2s both; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+    .glass-light { background: rgba(255,255,255,0.72); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+    .glass-dark { background: rgba(30,30,40,0.72); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+    .chart-container { position: relative; width: 100%; height: 200px; }
+    ::-webkit-scrollbar { height: 4px; width: 4px; }
+    ::-webkit-scrollbar-thumb { background: rgba(120,120,140,0.3); border-radius: 4px; }
+    .alert-pulse { animation: alertPulse 3s ease-in-out infinite; }
+    @keyframes alertPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.85; } }
+    .search-input::placeholder { color: rgba(120,120,140,0.6); }
+    .dark .search-input::placeholder { color: rgba(160,160,180,0.5); }
+    .temp-display { font-variant-numeric: tabular-nums; letter-spacing: -0.04em; }
+    .icon-16 { width: 16px; height: 16px; }
+    .icon-15 { width: 15px; height: 15px; }
+    .icon-14 { width: 14px; height: 14px; }
+    .icon-pin { width: 13px; height: 13px; opacity: 0.4; }
+    .icon-alert { flex-shrink: 0; }
+    .icon-radio { color: rgba(120,120,140,0.6); }
+    .icon-white { color: white; }
+  </style>
+</head>
+<body class="h-full bg-stone-50 dark:bg-[#0f0f14] text-stone-900 dark:text-stone-100 transition-colors duration-300">
+  <div id="app" class="h-full w-full overflow-auto">
+    <div id="alert-banner" class="hidden alert-pulse bg-amber-500/10 dark:bg-amber-500/15 border-b border-amber-500/20 px-4 py-2.5">
+      <div class="max-w-6xl mx-auto flex items-center gap-2.5 text-amber-700 dark:text-amber-400 text-sm font-medium">
+        <i data-lucide="alert-triangle" class="icon-16 icon-alert"></i>
+        <span id="alert-text"></span>
+        <button title="dismiss-alert" onclick="document.getElementById('alert-banner').classList.add('hidden')" class="ml-auto p-0.5 hover:bg-amber-500/10 rounded">
+          <i data-lucide="x" class="icon-14"></i>
+        </button>
+      </div>
+    </div>
+
+    <nav class="sticky top-0 z-30 glass-light dark:glass-dark border-b border-stone-200/60 dark:border-white/5">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-3 sm:gap-4">
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <div class="w-7 h-7 rounded-lg bg-sky-500 flex items-center justify-center">
+            <i data-lucide="cloud-sun" class="icon-16 icon-white"></i>
+          </div>
+          <span id="app-logo-text" class="font-semibold text-base tracking-tight hidden sm:inline">ELH weather</span>
+        </div>
+
+        <div class="flex-1 max-w-md relative">
+          <i data-lucide="search" class="icon-15 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 dark:text-stone-500 pointer-events-none"></i>
+          <input id="search-input" type="text" placeholder="Search city..." class="search-input w-full pl-9 pr-24 py-2 rounded-xl bg-stone-100 dark:bg-white/5 border border-stone-200/60 dark:border-white/8 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-400 transition-all" autocomplete="off">
+          <button id="search-btn" title="search-city" type="button" onclick="searchCurrentInput()" class="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-500 text-white hover:bg-sky-600 transition-colors">Search</button>
+          <div id="search-dropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#1a1a24] rounded-xl border border-stone-200 dark:border-white/10 shadow-lg overflow-hidden z-50"></div>
+        </div>
+
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <button id="unit-toggle" title="toggle-unit" onclick="toggleUnit()" class="text-xs font-mono font-medium px-3 py-1.5 rounded-lg bg-stone-100 dark:bg-white/5 border border-stone-200/60 dark:border-white/8 hover:bg-stone-200 dark:hover:bg-white/10 transition-colors">°C</button>
+          <button title="toggle-theme" onclick="toggleTheme()" class="p-2 rounded-lg hover:bg-stone-100 dark:hover:bg-white/5 transition-colors">
+            <i data-lucide="moon" class="icon-16 dark:hidden"></i>
+            <i data-lucide="sun" class="icon-16 hidden dark:block"></i>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <section id="hero" class="fade-in flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <p id="hero-location" title="search-current-location" onclick="searchCurrentLocation()" class="text-sm font-medium text-stone-500 dark:text-stone-400 mb-1 cursor-pointer hover:underline">Loading...</p>
+          <div class="flex items-baseline gap-2">
+            <span id="hero-temp" class="temp-display text-7xl sm:text-8xl font-light tracking-tighter">--</span>
+          </div>
+          <div class="flex items-center gap-3 mt-2">
+            <span id="hero-condition" class="text-stone-600 dark:text-stone-300 text-sm font-medium">--</span>
+            <span class="text-stone-300 dark:text-stone-600">|</span>
+            <span id="hero-hilo" class="text-stone-500 dark:text-stone-400 text-sm font-mono">H:-- L:--</span>
+          </div>
+          <p id="hero-datetime" class="text-xs text-stone-400 dark:text-stone-500 mt-1.5 font-mono"></p>
+        </div>
+        <div id="hero-icon" class="text-6xl sm:text-7xl leading-none self-start sm:self-end">--</div>
+      </section>
+
+      <section class="slide-up grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="rounded-2xl p-4 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+          <div class="flex items-center gap-2 text-stone-400 dark:text-stone-500 mb-3">
+            <i data-lucide="droplets" class="icon-14"></i>
+            <span class="text-xs font-medium uppercase tracking-wider">Humidity</span>
+          </div>
+          <p id="card-humidity" class="text-2xl font-semibold font-mono">--</p>
+          <p class="text-xs text-stone-400 dark:text-stone-500 mt-1">Live reading</p>
+        </div>
+        <div class="rounded-2xl p-4 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+          <div class="flex items-center gap-2 text-stone-400 dark:text-stone-500 mb-3">
+            <i data-lucide="wind" class="icon-14"></i>
+            <span class="text-xs font-medium uppercase tracking-wider">Wind</span>
+          </div>
+          <p id="card-wind" class="text-2xl font-semibold font-mono">--</p>
+          <p id="card-wind-dir" class="text-xs text-stone-400 dark:text-stone-500 mt-1">--</p>
+        </div>
+        <div class="rounded-2xl p-4 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+          <div class="flex items-center gap-2 text-stone-400 dark:text-stone-500 mb-3">
+            <i data-lucide="cloud-rain" class="icon-14"></i>
+            <span class="text-xs font-medium uppercase tracking-wider">Rainfall</span>
+          </div>
+          <p id="card-rain" class="text-2xl font-semibold font-mono">--</p>
+          <p class="text-xs text-stone-400 dark:text-stone-500 mt-1">Last hour</p>
+        </div>
+        <div class="rounded-2xl p-4 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+          <div class="flex items-center gap-2 text-stone-400 dark:text-stone-500 mb-3">
+            <i data-lucide="gauge" class="icon-14"></i>
+            <span class="text-xs font-medium uppercase tracking-wider">Pressure</span>
+          </div>
+          <p id="card-pressure" class="text-2xl font-semibold font-mono">--</p>
+          <p class="text-xs text-stone-400 dark:text-stone-500 mt-1">hPa</p>
+        </div>
+      </section>
+
+      <section class="slide-up-delay grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div class="rounded-2xl p-5 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+          <h3 class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-4">Hourly Temperature</h3>
+          <div class="chart-container"><canvas id="tempChart"></canvas></div>
+        </div>
+        <div class="rounded-2xl p-5 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+          <h3 class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-4">Rainfall Trend</h3>
+          <div class="chart-container"><canvas id="rainChart"></canvas></div>
+        </div>
+      </section>
+
+      <section class="slide-up-delay2 rounded-2xl p-5 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+        <h3 class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500 mb-4">7-Day Forecast</h3>
+        <div id="forecast-grid" class="grid grid-cols-7 gap-2 sm:gap-3"></div>
+      </section>
+
+      <section class="slide-up-delay2 grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div class="rounded-2xl p-5 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+          <div class="flex items-center gap-2 mb-4">
+            <i data-lucide="radio" class="icon-14 icon-radio"></i>
+            <h3 class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">METAR (Aerodrome Report)</h3>
+          </div>
+          <div id="metar-content" class="bg-stone-50 dark:bg-black/30 rounded-lg p-4 border border-stone-200/40 dark:border-white/5">
+            <p class="text-xs font-mono text-stone-600 dark:text-stone-300 leading-relaxed break-words whitespace-pre-wrap" id="metar-text">Loading METAR data...</p>
+          </div>
+          <p class="text-xs text-stone-400 dark:text-stone-500 mt-3 font-mono">Updated: <span id="metar-time">--:--</span></p>
+        </div>
+        <div class="rounded-2xl p-5 bg-white dark:bg-white/[0.03] border border-stone-200/60 dark:border-white/5">
+          <div class="flex items-center gap-2 mb-4">
+            <i data-lucide="flight" class="icon-14 icon-radio"></i>
+            <h3 class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">TAF (Terminal Forecast)</h3>
+          </div>
+          <div id="taf-content" class="bg-stone-50 dark:bg-black/30 rounded-lg p-4 border border-stone-200/40 dark:border-white/5">
+            <p class="text-xs font-mono text-stone-600 dark:text-stone-300 leading-relaxed break-words whitespace-pre-wrap" id="taf-text">Loading TAF data...</p>
+          </div>
+          <p class="text-xs text-stone-400 dark:text-stone-500 mt-3 font-mono">Valid: <span id="taf-valid">24 hours</span></p>
+        </div>
+      </section>
+
+
+    </main>
+  </div>
+
+  <script>
+    const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const SUGGESTED_CITIES = [
+      "San Francisco", "New York", "London", "Tokyo", "Sydney", "Paris", "Dubai", "Mumbai"
+    ];
+    const THEME_STORAGE_KEY = "elh-weather-theme";
+
+    let useCelsius = true;
+    let currentData = null;
+    let tempChart = null;
+    let rainChart = null;
+
+    function toF(c) { return Math.round((c * 9 / 5) + 32); }
+    function displayTemp(c) { return useCelsius ? Math.round(c) + "°C" : toF(c) + "°F"; }
+    function displayWind(kmh) { return useCelsius ? `${kmh} km/h` : `${Math.round(kmh * 0.621)} mph`; }
+
+    function toggleUnit() {
+      useCelsius = !useCelsius;
+      document.getElementById("unit-toggle").textContent = useCelsius ? "°C" : "°F";
+      if (currentData) renderCity(currentData);
+    }
+
+    function toggleTheme() {
+      document.documentElement.classList.toggle("dark");
+      const mode = document.documentElement.classList.contains("dark") ? "dark" : "light";
+      localStorage.setItem(THEME_STORAGE_KEY, mode);
+      if (currentData) renderCharts(currentData);
+    }
+
+    function applyTheme(mode) {
+      const root = document.documentElement;
+      if (mode === "dark") {
+        root.classList.add("dark");
+      } else {
+        root.classList.remove("dark");
+      }
+    }
+
+    function getDeviceTheme() {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+
+    function initTheme() {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      applyTheme(saved || getDeviceTheme());
+
+      const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+      themeMedia.addEventListener("change", (event) => {
+        if (!localStorage.getItem(THEME_STORAGE_KEY)) {
+          applyTheme(event.matches ? "dark" : "light");
+          if (currentData) renderCharts(currentData);
+        }
+      });
+    }
+
+    function formatLocationDateTime(d) {
+      const timezoneOffset = Number(d.timezoneOffset);
+      const obsTs = Number(d.obsTs);
+
+      if (!Number.isFinite(timezoneOffset) || !Number.isFinite(obsTs)) {
+        return d.updated_time || "";
+      }
+
+      const localDate = new Date((obsTs + timezoneOffset) * 1000);
+      const weekday = WEEKDAYS[localDate.getUTCDay()];
+      const month = MONTHS[localDate.getUTCMonth()];
+      const day = localDate.getUTCDate();
+      const minute = String(localDate.getUTCMinutes()).padStart(2, "0");
+      const hour24 = localDate.getUTCHours();
+      const period = hour24 >= 12 ? "PM" : "AM";
+      const hour12 = ((hour24 + 11) % 12) + 1;
+      return `${weekday}, ${month} ${day} · ${hour12}:${minute} ${period}`;
+    }
+
+    async function fetchWeather(city) {
+      try {
+        const response = await fetch("{{ url_for('api_weather') }}", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ city })
+        });
+        const payload = await response.json();
+
+        if (!response.ok) {
+          showAlert(payload.error || "Unable to fetch weather right now.");
+          return;
+        }
+
+        currentData = payload;
+        renderCity(payload);
+      } catch (error) {
+        showAlert("Network error while fetching weather.");
+      }
+    }
+
+    async function fetchWeatherByCoords(lat, lon) {
+      try {
+        const response = await fetch("{{ url_for('api_weather') }}", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat, lon })
+        });
+        const payload = await response.json();
+
+        if (!response.ok) {
+          fetchWeather("San Francisco");
+          return;
+        }
+
+        currentData = payload;
+        renderCity(payload);
+      } catch (error) {
+        fetchWeather("San Francisco");
+      }
+    }
+
+    function showAlert(message) {
+      const banner = document.getElementById("alert-banner");
+      document.getElementById("alert-text").textContent = message;
+      banner.classList.remove("hidden");
+    }
+
+    function renderCity(d) {
+      document.getElementById("hero-location").textContent = d.city;
+      document.getElementById("hero-temp").textContent = displayTemp(d.temp);
+      document.getElementById("hero-condition").textContent = d.condition;
+      document.getElementById("hero-hilo").textContent = `H:${displayTemp(d.hi)} L:${displayTemp(d.lo)}`;
+      document.getElementById("hero-datetime").textContent = formatLocationDateTime(d);
+
+      if (d.icon_url) {
+        document.getElementById("hero-icon").innerHTML = `<img src="${d.icon_url}" alt="icon" class="w-16 h-16 sm:w-20 sm:h-20"/>`;
+      } else {
+        document.getElementById("hero-icon").textContent = d.icon || "--";
+      }
+
+      document.getElementById("card-humidity").innerHTML = `${d.humidity}<span class="text-sm font-normal">%</span>`;
+      document.getElementById("card-wind").innerHTML = displayWind(d.wind);
+      document.getElementById("card-wind-dir").textContent = `${d.windDir} gusts ${displayWind(d.gust)}`;
+      document.getElementById("card-rain").innerHTML = `${d.rain} <span class="text-sm font-normal">mm</span>`;
+      document.getElementById("card-pressure").innerHTML = `${d.pressure} <span class="text-sm font-normal">hPa</span>`;
+
+      const alertBanner = document.getElementById("alert-banner");
+      if (d.alert) {
+        alertBanner.classList.remove("hidden");
+        document.getElementById("alert-text").textContent = d.alertMsg;
+      } else {
+        alertBanner.classList.add("hidden");
+      }
+
+      renderForecast(d);
+      renderCharts(d);
+      renderMetarTaf(d);
+      lucide.createIcons();
+    }
+
+    function renderForecast(d) {
+      const grid = document.getElementById("forecast-grid");
+      grid.innerHTML = "";
+      const today = new Date().getDay();
+      for (let i = 0; i < 7; i++) {
+        const dayIdx = (today + i) % 7;
+        const hi = d.hi + Math.round((Math.random() - 0.5) * 6);
+        const lo = d.lo + Math.round((Math.random() - 0.5) * 4);
+        const col = document.createElement("div");
+        col.className = "flex flex-col items-center gap-2 py-3 rounded-xl hover:bg-stone-50 dark:hover:bg-white/[0.03] transition-colors";
+        col.innerHTML = `
+          <span class="text-xs font-medium text-stone-500 dark:text-stone-400">${i === 0 ? "Today" : DAYS[dayIdx]}</span>
+          <span class="text-2xl">${d.icon || "☁"}</span>
+          <span class="text-sm font-semibold font-mono">${displayTemp(hi)}</span>
+          <span class="text-xs text-stone-400 dark:text-stone-500 font-mono">${displayTemp(lo)}</span>
+        `;
+        grid.appendChild(col);
+      }
+    }
+
+    function renderCharts(d) {
+      const isDark = document.documentElement.classList.contains("dark");
+      const gridColor = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
+      const textColor = isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.35)";
+      const hours = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, "0")}:00`);
+      const temps = d.hourlyTemps.map((t) => useCelsius ? t : toF(t));
+
+      if (tempChart) tempChart.destroy();
+      if (rainChart) rainChart.destroy();
+
+      const tempCtx = document.getElementById("tempChart").getContext("2d");
+      const grad = tempCtx.createLinearGradient(0, 0, 0, 200);
+      grad.addColorStop(0, isDark ? "rgba(14,165,233,0.2)" : "rgba(14,165,233,0.15)");
+      grad.addColorStop(1, "rgba(14,165,233,0)");
+
+      tempChart = new Chart(tempCtx, {
+        type: "line",
+        data: {
+          labels: hours,
+          datasets: [{ data: temps, borderColor: "#0ea5e9", backgroundColor: grad, borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 4 }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: isDark ? "#1a1a24" : "#fff",
+              titleColor: textColor,
+              bodyColor: isDark ? "#e7e5e4" : "#1c1917",
+              borderColor: gridColor,
+              borderWidth: 1,
+              padding: 8,
+              displayColors: false,
+              callbacks: { label: (ctx) => `${ctx.parsed.y}${useCelsius ? "C" : "F"}` }
+            }
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: textColor, font: { size: 10, family: "JetBrains Mono" }, maxTicksLimit: 8 } },
+            y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10, family: "JetBrains Mono" } }, border: { display: false } }
+          }
+        }
+      });
+
+      const rainCtx = document.getElementById("rainChart").getContext("2d");
+      const rainGrad = rainCtx.createLinearGradient(0, 0, 0, 200);
+      rainGrad.addColorStop(0, isDark ? "rgba(99,102,241,0.3)" : "rgba(99,102,241,0.2)");
+      rainGrad.addColorStop(1, "rgba(99,102,241,0)");
+
+      rainChart = new Chart(rainCtx, {
+        type: "bar",
+        data: { labels: hours, datasets: [{ data: d.hourlyRain, backgroundColor: rainGrad, borderColor: "rgba(99,102,241,0.5)", borderWidth: 1, borderRadius: 3 }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: isDark ? "#1a1a24" : "#fff",
+              titleColor: textColor,
+              bodyColor: isDark ? "#e7e5e4" : "#1c1917",
+              borderColor: gridColor,
+              borderWidth: 1,
+              padding: 8,
+              displayColors: false,
+              callbacks: { label: (ctx) => `${ctx.parsed.y} mm` }
+            }
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: textColor, font: { size: 10, family: "JetBrains Mono" }, maxTicksLimit: 8 } },
+            y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 10, family: "JetBrains Mono" } }, border: { display: false } }
+          }
+        }
+      });
+    }
+
+    const searchInput = document.getElementById("search-input");
+    const searchDropdown = document.getElementById("search-dropdown");
+
+    searchInput.addEventListener("input", () => {
+      const q = searchInput.value.trim().toLowerCase();
+      if (!q) {
+        searchDropdown.classList.add("hidden");
+        return;
+      }
+
+      const matches = SUGGESTED_CITIES.filter((c) => c.toLowerCase().includes(q));
+      if (!matches.length) {
+        searchDropdown.innerHTML = '<div class="px-4 py-3 text-sm text-stone-400">No cities found</div>';
+      } else {
+        searchDropdown.innerHTML = matches.map((c) => `<button onclick="selectCity('${c}')" class="w-full text-left px-4 py-2.5 text-sm hover:bg-stone-50 dark:hover:bg-white/5 transition-colors flex items-center gap-2"><i data-lucide="map-pin" class="icon-pin"></i>${c}</button>`).join("");
+      }
+
+      searchDropdown.classList.remove("hidden");
+      lucide.createIcons();
+    });
+
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        searchCurrentInput();
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest("#search-input") && !e.target.closest("#search-dropdown")) {
+        searchDropdown.classList.add("hidden");
+      }
+    });
+
+    function selectCity(name) {
+      searchInput.value = "";
+      searchDropdown.classList.add("hidden");
+      fetchWeather(name);
+    }
+
+    function searchCurrentInput() {
+      const q = searchInput.value.trim();
+      if (!q) {
+        showAlert("Please type a city name before searching.");
+        return;
+      }
+      selectCity(q);
+    }
+
+    function searchCurrentLocation() {
+      if (currentData && currentData.city) {
+        fetchWeather(currentData.city);
+      }
+    }
+
+    function initDefaultLocation() {
+      if (!navigator.geolocation) {
+        fetchWeather("San Francisco");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          fetchWeatherByCoords(latitude, longitude);
+        },
+        () => {
+          fetchWeather("San Francisco");
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+      );
+    }
+
+    function renderMetarTaf(d) {
+      document.getElementById("metar-text").textContent = d.metar;
+      document.getElementById("taf-text").textContent = d.taf;
+      document.getElementById("metar-time").textContent = d.metarTime || "--:--";
+      document.getElementById("taf-valid").textContent = d.tafValid || "N/A";
+    }
+
+    initTheme();
+    initDefaultLocation();
+    lucide.createIcons();
+  </script>
+</body>
+</html>
